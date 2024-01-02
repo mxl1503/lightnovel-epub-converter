@@ -1,2 +1,3 @@
 created_ebooks/*
 !created_ebooks/temp.txt
+.DS_Store
