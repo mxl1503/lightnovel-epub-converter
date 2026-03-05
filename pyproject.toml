@@ -1,0 +1,11 @@
+[project]
+name = "lightnovel-epub-converter"
+version = "0.1.0"
+description = "Scrape light novels and convert them to EPUB format"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "selenium>=4.16.0",
+    "EbookLib>=0.18",
+]
+

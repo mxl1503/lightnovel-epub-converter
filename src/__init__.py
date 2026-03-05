@@ -1,0 +1,1 @@
+"""Light novel EPUB converter."""

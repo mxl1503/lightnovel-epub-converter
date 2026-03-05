@@ -21,18 +21,19 @@ You will also need a suitable WebDriver (ie. Google Chrome) installed for Seleni
 Clone the repository to your local machine:
 ```sh
 git clone git@github.com:mxl1503/lightnovel-epub-converter.git
+cd lightnovel-epub-converter
 ```
 
-Navigate to the script's directory and install the required Python packages:
-```
-cd lightnovel-epub-converter
-pip install -r requirements.txt
+Install dependencies with [uv](https://docs.astral.sh/uv/):
+```sh
+make install
+# or: uv sync
 ```
 
 ## Usage
-To use the script, run it from your command line:
-```
-python3 src/main.py
+```sh
+make run
+# or: uv run python -m src.main
 ```
 
 Follow the on-screen prompts to enter the URL of the first chapter of the light novel and other required details.

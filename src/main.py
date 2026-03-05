@@ -1,94 +1,94 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
-import ebooklib
-from ebooklib import epub
-import random
+"""CLI entry point for the light novel EPUB converter."""
 
-def go_to_next_chapter(driver):
-    # Choose between Keys.RIGHT or Keys.D based on the website's functionality
-    try:
-        driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.RIGHT)  
-        # If chapter content isn't downloading properly, add a sleep in to allow
-        # the website to load properly
+import argparse
+import re
+import sys
 
-        # time.sleep(1) 
-    except Exception as e:
-        print(f"Error while going to the next chapter: {e}")
+from .epub_builder import EpubBuilder
+from .scraper import Scraper
 
-def main():
-    first_chapter_url = input("Please enter the url of chapter to start downloading from (supports readnovelfull.com): ")
-    num_chapters = int(input("Please enter the number of chapters to download: "))
-    title = input("Please enter the title of the E-Book: ")  
 
-    driver = webdriver.Chrome()
-    driver.get(first_chapter_url)
-    
-    chapters = []
-    for i in range(num_chapters):
-        try:
-            print(f"Running for Chapter {i + 1}")
+def sanitize_title(title: str) -> str:
+    """Sanitize title for use as a filename."""
+    sanitized = title.strip()
+    sanitized = re.sub(r'[<>:"/\\|?*]', "_", sanitized)
+    return sanitized or "untitled"
 
-            content_div = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "chr-content"))
-            )
 
-            html_content = content_div.get_attribute('innerHTML')
-            chapters.append(html_content)
-        except NoSuchElementException:
-            print(f"Chapter content not found for chapter {i + 1}")
-        except TimeoutException:
-            print(f"Timed out waiting for chapter {i + 1}")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+def validate_url(url: str) -> bool:
+    """Validate that URL is for a supported site (readnovelfull.com)."""
+    return url.strip().startswith("http") and "readnovelfull.com" in url
 
-        go_to_next_chapter(driver)
 
-    book = epub.EpubBook()
+def get_input(prompt: str, validator=None, converter=None):
+    """Get validated input from user with optional validator and converter."""
+    while True:
+        value = input(prompt).strip()
+        if validator and not validator(value):
+            print("Invalid input. Please try again.")
+            continue
+        if converter:
+            try:
+                return converter(value)
+            except (ValueError, TypeError) as e:
+                print(f"Invalid input: {e}. Please try again.")
+                continue
+        return value
 
-    # Set metadata
-    random_num = random.randint(100000, 999999)
-    book.set_identifier(f"id{random_num}")
-    book.set_title(title)
-    book.set_language("en")
-    book.add_author("default")
 
-    for i, chapter_content in enumerate(chapters, 1):
-        # Create a chapter
-        chapter = epub.EpubHtml(title=f"Chapter {i}", file_name=f"chap_{i:02d}.xhtml", lang="en")
-        chapter.content = chapter_content
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Scrape light novels from readnovelfull.com and convert to EPUB."
+    )
+    parser.add_argument("--url", help="URL of the first chapter to download")
+    parser.add_argument("--chapters", type=int, help="Number of chapters to download")
+    parser.add_argument("--title", help="Title of the e-book")
+    args = parser.parse_args()
 
-        # Add chapter to the book
-        book.add_item(chapter)
+    if args.url:
+        first_chapter_url = args.url
+        if not validate_url(first_chapter_url):
+            print("Error: URL must be from readnovelfull.com and start with http")
+            sys.exit(1)
+    else:
+        first_chapter_url = get_input(
+            "Please enter the url of chapter to start downloading from (supports readnovelfull.com): ",
+            validator=validate_url,
+        )
 
-        # Add chapter to the book's spine
-        book.spine.append(chapter)
+    if args.chapters is not None:
+        num_chapters = args.chapters
+        if num_chapters <= 0:
+            print("Error: Number of chapters must be positive")
+            sys.exit(1)
+    else:
+        def parse_positive_int(value: str) -> int:
+            val = int(value)
+            if val <= 0:
+                raise ValueError("Must be positive")
+            return val
 
-    # Define the Table Of Contents
-    book.toc = tuple(epub.Link(f"chap_{i:02d}.xhtml", f"Chapter {i}", f"chap{i}") for i in range(1, len(chapters) + 1))
+        num_chapters = get_input(
+            "Please enter the number of chapters to download: ",
+            converter=parse_positive_int,
+        )
 
-    # Add default NCX and Navigation file
-    book.add_item(epub.EpubNcx())
-    book.add_item(epub.EpubNav())
+    if args.title:
+        title = sanitize_title(args.title)
+    else:
+        raw_title = get_input("Please enter the title of the E-Book: ")
+        title = sanitize_title(raw_title)
 
-    # Read the CSS file
-    with open("src/styles.css", "r") as css_file:
-        style_content = css_file.read()
-    nav_css = epub.EpubItem(uid="style_nav", file_name="src/styles.css", media_type="text/css", content=style_content)
+    with Scraper() as scraper:
+        chapters = scraper.scrape_chapters(first_chapter_url, num_chapters)
 
-    # Add CSS file
-    book.add_item(nav_css)
+    builder = EpubBuilder(title=title)
+    builder.add_chapters(chapters)
+    output_path = builder.write()
 
-    # Create the EPUB file
-    epub.write_epub(f"created_ebooks/{title}.epub", book, {})
+    print(f"Downloaded {len(chapters)} of {num_chapters} chapters.")
+    print(f"Ebook called {title} now created at {output_path}!")
 
-    driver.quit()
-
-    print(f"Ebook called {title} now created in the created_ebooks directory!")
 
 if __name__ == "__main__":
     main()
